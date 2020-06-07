@@ -1,5 +1,5 @@
 ﻿using UnityEngine;
-using BS;
+using ThunderRoad;
 
 namespace TelekinesisPlus
 {
@@ -7,8 +7,8 @@ namespace TelekinesisPlus
     public class TelekinesisPlusModule : LevelModule
     {
 
-        public Telekinesis rightTele;
-        public Telekinesis leftTele;
+        public SpellCaster rightTele;
+        public SpellCaster leftTele;
 
         public LineRenderer leftLine = null;
         public LineRenderer rightLine = null;
@@ -16,7 +16,7 @@ namespace TelekinesisPlus
         public float maxReach = 0.65f;
         public float minReach = 0.27f;
 
-        public float reach;
+        public float reach = 0f;
 
         public bool justCatchedRight = false;
         public bool justCatchedLeft = false;
@@ -25,9 +25,8 @@ namespace TelekinesisPlus
 
         private Vector3[] direction = new Vector3[2];
 
-        public float maxDistance;
         public float maxDistanceStatic = 15f;
-
+        public float maxDistance;
         public Handle rightHandle;
         public Handle leftHandle;
 
@@ -39,44 +38,61 @@ namespace TelekinesisPlus
         public Transform leftFinger;
         public Transform rightFinger;
 
-
         public Vector3 point;
+
+        public bool linesActive = false;
 
         public override void OnLevelLoaded(LevelDefinition levelDefinition)
         {
-            
+            Debug.Log("TelekinesisPlus Loaded");
+            base.OnLevelLoaded(levelDefinition);
+            EventManager.onPossessionEvent += new EventManager.PossessionEvent(EventManager_onPossessionEvent);
         }
 
-
-        public override void Update(LevelDefinition levelDefinition)
+        private void EventManager_onPossessionEvent(Body oldBody, Body newBody)
         {
-            if(Creature.player && Player.local && !initialized)
-            {
-                initialized = true;
-                Initialize();
-                                                          
-            }
-
-            if (!Creature.player)
+            if (!newBody)
             {
                 initialized = false;
+                return;
             }
 
+            initialized = true;
+            Initialize();
+        }
+        public override void Update(LevelDefinition levelDefinition)
+        {
             if (initialized)
-            {                              
-                if (rightTele)
+            {
+                if (rightTele != null)
                 {
-                    justCatchedRight = TeleStuff(rightTele, rightElbow, rightShoulder, justCatchedRight, rightHandle, rightFinger);
+                    justCatchedRight = TeleStuff(rightTele, rightElbow, rightShoulder, justCatchedRight, rightHandle, rightFinger, rightLine);
                 }
 
-                if (leftTele)
+                if (leftTele != null)
                 {
-                    justCatchedLeft = TeleStuff(leftTele, leftElbow, leftShoulder, justCatchedLeft, leftHandle, leftFinger);
+                    justCatchedLeft = TeleStuff(leftTele, leftElbow, leftShoulder, justCatchedLeft, leftHandle, leftFinger, leftLine);
                 }
             }
         }
 
-        public bool TeleStuff(Telekinesis tele, Transform elbow, Transform shoulder, bool justCatched, Handle teleHandle, Transform finger)
+        public bool TeleStuff(SpellCaster tele, Transform elbow, Transform shoulder, bool justCatched, Handle teleHandle, Transform finger, LineRenderer line)
+        {
+            justCatched = TeleStuff(tele, elbow, shoulder, justCatched, teleHandle, finger);
+            if (linesActive)
+            {
+                direction[0] = finger.position;
+                direction[1] = point;
+
+                if (tele.transform.position != point)
+                {
+                    line.SetPositions(direction);
+                }
+            }
+
+            return justCatched;
+        }
+        public bool TeleStuff(SpellCaster tele, Transform elbow, Transform shoulder, bool justCatched, Handle teleHandle, Transform finger)
         {
             reach = Vector3.Distance(tele.transform.position, shoulder.position);
 
@@ -89,88 +105,77 @@ namespace TelekinesisPlus
                 point = tele.transform.position + (finger.position - elbow.position).normalized * ((reach - minReach) / (maxReach - minReach)) * maxDistance;
             }
 
-            /*
-            direction[0] = finger.position;
-            direction[1] = point;
-
-            if (tele.transform.position != point)
-            {
-                line.SetPositions(direction);
-            }*/
-
             if (maxDistance != maxDistanceStatic)
             {
-                maxDistance = Mathf.Lerp(maxDistance, maxDistanceStatic, Time.deltaTime / 1.75f);
+                maxDistance = Mathf.Lerp(maxDistance, maxDistanceStatic, Time.deltaTime / 2f);
             }
 
-            if (tele.catchedHandle)
+            if (tele.telekinesis.catchedHandle)
             {
                 if (!justCatched)
                 {
-                    maxDistance = Vector3.Distance(tele.catchedHandle.transform.position, tele.transform.position) * (maxReach - minReach) / (reach - minReach);
+                    maxDistance = Vector3.Distance(tele.telekinesis.catchedHandle.transform.position, tele.transform.position) * (maxReach - minReach) / (reach - minReach);
                     justCatched = true;
-                    teleHandle = tele.catchedHandle;
-                  
+                    teleHandle = tele.telekinesis.catchedHandle;
+
                 }
 
-                
-
-                tele.catchedHandle.rb.AddForce((point - tele.catchedHandle.transform.position) * forceMultiplier, ForceMode.Force);
-
-
+                tele.telekinesis.catchedHandle.rb.AddForce((point - tele.telekinesis.catchedHandle.transform.position) * forceMultiplier, ForceMode.Force);
             }
             else
             {
                 justCatched = false;
                 if (teleHandle)
                 {
-                    
+
                     teleHandle = null;
                 }
-
             }
 
             return justCatched;
         }
 
-        public void Initialize()
+        private void MakeLines()
         {
-            maxDistance = maxDistanceStatic;
-            neck = Creature.player.ragdoll.GetPart(HumanBodyBones.Neck).transf;
-
-
-            leftTele = Player.local.handLeft.bodyHand.telekinesis;            
-            leftTele.pullAndRepelMaxSpeed = 0f;       
-            leftTele.positionSpring = 0f;           
-            leftElbow = Creature.player.animator.GetBoneTransform(HumanBodyBones.LeftUpperArm);            
-            leftShoulder = Creature.player.animator.GetBoneTransform(HumanBodyBones.LeftShoulder);
-            leftFinger = Creature.player.animator.GetBoneTransform(HumanBodyBones.LeftIndexDistal);
-                                    
-            /*leftLine = leftTele.gameObject.AddComponent<LineRenderer>();
+            leftLine = leftTele.gameObject.AddComponent<LineRenderer>();
             leftLine.receiveShadows = false;
             leftLine.material.color = Color.white;
             leftLine.startWidth = 0.005f;
-            leftLine.endWidth = 0.005f;            
+            leftLine.endWidth = 0.005f;
             leftLine.startColor = Color.white;
-            leftLine.endColor = Color.white*/
+            leftLine.endColor = Color.white;
 
-
-
-
-            rightTele = Player.local.handRight.bodyHand.telekinesis;
-            rightTele.pullAndRepelMaxSpeed = 0f;
-            rightTele.positionSpring = 0f;
-            rightElbow = Creature.player.animator.GetBoneTransform(HumanBodyBones.RightUpperArm);
-            rightShoulder = Creature.player.animator.GetBoneTransform(HumanBodyBones.RightShoulder);
-            rightFinger = Creature.player.animator.GetBoneTransform(HumanBodyBones.RightIndexDistal);
-
-            /*rightLine = rightTele.gameObject.AddComponent<LineRenderer>();
+            rightLine = rightTele.gameObject.AddComponent<LineRenderer>();
             rightLine.receiveShadows = false;
             rightLine.material.color = Color.white;
             rightLine.startWidth = 0.005f;
             rightLine.endWidth = 0.005f;
             rightLine.startColor = Color.white;
-            rightLine.endColor = Color.white;*/            
+            rightLine.endColor = Color.white;
+        }
+
+        public void Initialize()
+        {
+            maxDistance = maxDistanceStatic;
+            neck = Creature.player.animator.GetBoneTransform(HumanBodyBones.Neck);
+
+            // Left telekinesis
+            leftTele = Player.local.handLeft.bodyHand.caster;
+            leftTele.telekinesis.pullAndRepelMaxSpeed = 0f;       
+            leftTele.telekinesis.positionSpring = 0f;           
+            leftElbow = Creature.player.animator.GetBoneTransform(HumanBodyBones.LeftUpperArm);            
+            leftShoulder = Creature.player.animator.GetBoneTransform(HumanBodyBones.LeftShoulder);
+            leftFinger = Creature.player.animator.GetBoneTransform(HumanBodyBones.LeftIndexDistal);
+            
+            // Right telekinesis
+            rightTele = Player.local.handRight.bodyHand.caster;
+            rightTele.telekinesis.pullAndRepelMaxSpeed = 0f;
+            rightTele.telekinesis.positionSpring = 0f;
+            rightElbow = Creature.player.animator.GetBoneTransform(HumanBodyBones.RightUpperArm);
+            rightShoulder = Creature.player.animator.GetBoneTransform(HumanBodyBones.RightShoulder);
+            rightFinger = Creature.player.animator.GetBoneTransform(HumanBodyBones.RightIndexDistal);
+
+            if (linesActive) MakeLines();
         }
 
     }
