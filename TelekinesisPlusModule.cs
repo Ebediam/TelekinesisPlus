@@ -44,17 +44,17 @@ namespace TelekinesisPlus
         public bool linesActive = false;
         public bool initialized = false;
 
-        public override IEnumerator OnLoadCoroutine(Level level)
+        public override IEnumerator OnLoadCoroutine()
         {
             Debug.Log("TelekinesisPlus Loaded");
             EventManager.onPossess += new EventManager.PossessEvent(EventManager_onPossessEvent);
-            return base.OnLoadCoroutine(level);
+            return base.OnLoadCoroutine();
         }
 
-        public override void OnUnload(Level level)
+        public override void OnUnload()
         {
             initialized = false;
-            base.OnUnload(level);
+            base.OnUnload();
         }
 
         private void EventManager_onPossessEvent(Creature creature, EventTime eventTime)
@@ -66,7 +66,7 @@ namespace TelekinesisPlus
             }
         }
 
-        public override void Update(Level level)
+        public override void Update()
         {
             if (initialized)
             {
@@ -80,7 +80,7 @@ namespace TelekinesisPlus
                     justCatchedLeft = TeleStuff(leftTele, leftElbow, leftShoulder, justCatchedLeft, leftHandle, leftFinger, leftLine);
                 }
             }
-            base.Update(level);
+            base.Update();
         }
 
         public bool TeleStuff(SpellCaster tele, Transform elbow, Transform shoulder, bool justCatched, Handle teleHandle, Transform finger, LineRenderer line)
