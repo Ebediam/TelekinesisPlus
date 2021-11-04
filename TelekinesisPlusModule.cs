@@ -1,5 +1,6 @@
-﻿using UnityEngine;
+using UnityEngine;
 using ThunderRoad;
+using System.Collections;
 
 namespace TelekinesisPlus
 {
@@ -41,26 +42,31 @@ namespace TelekinesisPlus
         public Vector3 point;
 
         public bool linesActive = false;
+        public bool initialized = false;
 
-        public override void OnLevelLoaded(LevelDefinition levelDefinition)
+        public override IEnumerator OnLoadCoroutine()
         {
             Debug.Log("TelekinesisPlus Loaded");
-            base.OnLevelLoaded(levelDefinition);
-            EventManager.onPossessionEvent += new EventManager.PossessionEvent(EventManager_onPossessionEvent);
+            EventManager.onPossess += new EventManager.PossessEvent(EventManager_onPossessEvent);
+            return base.OnLoadCoroutine();
         }
 
-        private void EventManager_onPossessionEvent(Body oldBody, Body newBody)
+        public override void OnUnload()
         {
-            if (!newBody)
-            {
-                initialized = false;
-                return;
-            }
-
-            initialized = true;
-            Initialize();
+            initialized = false;
+            base.OnUnload();
         }
-        public override void Update(LevelDefinition levelDefinition)
+
+        private void EventManager_onPossessEvent(Creature creature, EventTime eventTime)
+        {
+            if (creature.player != null && creature.player.creature != null)
+            {
+                initialized = true;
+                Initialize(creature.player.creature);
+            }
+        }
+
+        public override void Update()
         {
             if (initialized)
             {
@@ -74,6 +80,7 @@ namespace TelekinesisPlus
                     justCatchedLeft = TeleStuff(leftTele, leftElbow, leftShoulder, justCatchedLeft, leftHandle, leftFinger, leftLine);
                 }
             }
+            base.Update();
         }
 
         public bool TeleStuff(SpellCaster tele, Transform elbow, Transform shoulder, bool justCatched, Handle teleHandle, Transform finger, LineRenderer line)
@@ -92,6 +99,7 @@ namespace TelekinesisPlus
 
             return justCatched;
         }
+
         public bool TeleStuff(SpellCaster tele, Transform elbow, Transform shoulder, bool justCatched, Handle teleHandle, Transform finger)
         {
             reach = Vector3.Distance(tele.transform.position, shoulder.position);
@@ -154,26 +162,26 @@ namespace TelekinesisPlus
             rightLine.endColor = Color.white;
         }
 
-        public void Initialize()
+        public void Initialize(Creature player)
         {
             maxDistance = maxDistanceStatic;
-            neck = Creature.player.animator.GetBoneTransform(HumanBodyBones.Neck);
+            neck = player.animator.GetBoneTransform(HumanBodyBones.Neck);
 
             // Left telekinesis
-            leftTele = Player.local.handLeft.bodyHand.caster;
-            leftTele.telekinesis.pullAndRepelMaxSpeed = 0f;       
-            leftTele.telekinesis.positionSpring = 0f;           
-            leftElbow = Creature.player.animator.GetBoneTransform(HumanBodyBones.LeftUpperArm);            
-            leftShoulder = Creature.player.animator.GetBoneTransform(HumanBodyBones.LeftShoulder);
-            leftFinger = Creature.player.animator.GetBoneTransform(HumanBodyBones.LeftIndexDistal);
-            
+            leftTele = player.handLeft.caster;
+            leftTele.telekinesis.pullAndRepelMaxSpeed = 0f;
+            leftTele.telekinesis.positionSpring = 0f;
+            leftElbow = player.animator.GetBoneTransform(HumanBodyBones.LeftUpperArm);
+            leftShoulder = player.animator.GetBoneTransform(HumanBodyBones.LeftShoulder);
+            leftFinger = player.animator.GetBoneTransform(HumanBodyBones.LeftIndexDistal);
+
             // Right telekinesis
-            rightTele = Player.local.handRight.bodyHand.caster;
+            rightTele = player.handRight.caster;
             rightTele.telekinesis.pullAndRepelMaxSpeed = 0f;
             rightTele.telekinesis.positionSpring = 0f;
-            rightElbow = Creature.player.animator.GetBoneTransform(HumanBodyBones.RightUpperArm);
-            rightShoulder = Creature.player.animator.GetBoneTransform(HumanBodyBones.RightShoulder);
-            rightFinger = Creature.player.animator.GetBoneTransform(HumanBodyBones.RightIndexDistal);
+            rightElbow = player.animator.GetBoneTransform(HumanBodyBones.RightUpperArm);
+            rightShoulder = player.animator.GetBoneTransform(HumanBodyBones.RightShoulder);
+            rightFinger = player.animator.GetBoneTransform(HumanBodyBones.RightIndexDistal);
 
             if (linesActive) MakeLines();
         }
