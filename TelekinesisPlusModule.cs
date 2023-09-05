@@ -1,12 +1,27 @@
-using UnityEngine;
+using System;
 using ThunderRoad;
-using System.Collections;
+using UnityEngine;
 
 namespace TelekinesisPlus
 {
     // This create an level module that can be referenced in the level JSON
-    public class TelekinesisPlusModule : LevelModule
+    public class TelekinesisPlusScript : ThunderScript
     {
+        public static ModOptionBool[] booleanOption = {
+            new ModOptionBool("Disabled", false),
+            new ModOptionBool("Enabled", true)
+        };
+
+        public static int floatOptionIndex(float minValue, float step, float defaultValue)
+        {
+            return (int)((defaultValue - minValue) / step);
+        }
+
+        public static ModOptionFloat[] reachOption = ModOptionFloat.CreateArray(0.01f, 3.00f, 0.01f);
+
+        public static ModOptionFloat[] forceMultiplierOption = ModOptionFloat.CreateArray(1, 1000, 0.1f);
+
+        public static ModOptionFloat[] maxDistanceOption = ModOptionFloat.CreateArray(0.1f, 50, 0.1f);
 
         public SpellCaster rightTele;
         public SpellCaster leftTele;
@@ -14,19 +29,31 @@ namespace TelekinesisPlus
         public LineRenderer leftLine = null;
         public LineRenderer rightLine = null;
 
-        public float maxReach = 0.65f;
-        public float minReach = 0.27f;
+        [ModOptionSlider]
+        [ModOptionSave]
+        [ModOption(name: "Maximum Reach", tooltip: "Maximum distance from shoulder to hand", valueSourceName: nameof(reachOption), defaultValueIndex = (int) ((0.65f - 0.01f) / 0.01f))]
+        public static float maxReach = 0.65f;
+        [ModOptionSlider]
+        [ModOptionSave]
+        [ModOption(name: "Minimum Reach", tooltip: "Minimum distance from shoulder to hand", valueSourceName: nameof(reachOption), defaultValueIndex = (int) ((0.27f - 0.01f) / 0.01f))]
+        public static float minReach = 0.27f;
 
         public float reach = 0f;
 
         public bool justCatchedRight = false;
         public bool justCatchedLeft = false;
 
-        public float forceMultiplier = 300;
+        [ModOptionSlider]
+        [ModOptionSave]
+        [ModOption(name: "Force Multiplier", tooltip: "Multiply against the default telekinesis force", valueSourceName: nameof(forceMultiplierOption), defaultValueIndex = (int) ((300f - 0.1f) / 0.1f))]
+        public static float forceMultiplier = 300;
 
         private Vector3[] direction = new Vector3[2];
 
-        public float maxDistanceStatic = 15f;
+        [ModOptionSlider]
+        [ModOptionSave]
+        [ModOption(name: "Maximum Distance", tooltip: "How far away an item can be held", valueSourceName: nameof(maxDistanceOption), defaultValueIndex = (int) ((15f - 0.1f) / 0.1f))]
+        public static float maxDistanceStatic = 15f;
         public float maxDistance;
         public Handle rightHandle;
         public Handle leftHandle;
@@ -41,35 +68,58 @@ namespace TelekinesisPlus
 
         public Vector3 point;
 
-        public bool linesActive = false;
+        [ModOptionButton]
+        [ModOptionSave]
+        [ModOption(name: "Make Lines (not working)", tooltip: "Draws lines depicting telekinesis targets. Currently seems to be broken.", valueSourceName: nameof(booleanOption))]
+        public static bool linesActive = false;
+        public bool linesCreated = false;
         public bool initialized = false;
 
-        public override IEnumerator OnLoadCoroutine()
+        public EventManager.PossessEvent possessEvent;
+
+        public override void ScriptLoaded(ModManager.ModData modData)
         {
+            base.ScriptLoaded(modData);
+            possessEvent = new EventManager.PossessEvent(EventManager_onPossessEvent);
             Debug.Log("TelekinesisPlus Loaded");
-            EventManager.onPossess += new EventManager.PossessEvent(EventManager_onPossessEvent);
-            return base.OnLoadCoroutine();
         }
 
-        public override void OnUnload()
+        public override void ScriptEnable()
         {
+            base.ScriptEnable();
+            EventManager.onPossess += EventManager_onPossessEvent;
+            Debug.Log("TelekinesisPlus Enabled");
+        }
+
+        public override void ScriptDisable()
+        {
+            base.ScriptDisable();
             initialized = false;
-            base.OnUnload();
+            EventManager.onPossess -= EventManager_onPossessEvent;
+            Debug.Log("TelekinesisPlus Disabled");
         }
 
         private void EventManager_onPossessEvent(Creature creature, EventTime eventTime)
         {
             if (creature.player != null && creature.player.creature != null)
             {
-                initialized = true;
                 Initialize(creature.player.creature);
+                initialized = true;
+                Debug.Log("TelekinesisPlus Initialized");
             }
         }
 
-        public override void Update()
+        public override void ScriptFixedUpdate()
         {
+            base.ScriptFixedUpdate();
             if (initialized)
             {
+                if (linesActive)
+                {
+                    if (!linesCreated) MakeLines();
+                }
+                else if (linesCreated) RemoveLines();
+
                 if (rightTele != null)
                 {
                     justCatchedRight = TeleStuff(rightTele, rightElbow, rightShoulder, justCatchedRight, rightHandle, rightFinger, rightLine);
@@ -80,7 +130,6 @@ namespace TelekinesisPlus
                     justCatchedLeft = TeleStuff(leftTele, leftElbow, leftShoulder, justCatchedLeft, leftHandle, leftFinger, leftLine);
                 }
             }
-            base.Update();
         }
 
         public bool TeleStuff(SpellCaster tele, Transform elbow, Transform shoulder, bool justCatched, Handle teleHandle, Transform finger, LineRenderer line)
@@ -128,14 +177,13 @@ namespace TelekinesisPlus
 
                 }
 
-                tele.telekinesis.catchedHandle.rb.AddForce((point - tele.telekinesis.catchedHandle.transform.position) * forceMultiplier, ForceMode.Force);
+                tele.telekinesis.catchedHandle.physicBody.AddForce((point - tele.telekinesis.catchedHandle.transform.position) * forceMultiplier, ForceMode.Force);
             }
             else
             {
                 justCatched = false;
                 if (teleHandle)
                 {
-
                     teleHandle = null;
                 }
             }
@@ -160,6 +208,18 @@ namespace TelekinesisPlus
             rightLine.endWidth = 0.005f;
             rightLine.startColor = Color.white;
             rightLine.endColor = Color.white;
+
+            linesCreated = true;
+        }
+
+        private void RemoveLines()
+        {
+            GameObject.Destroy(leftLine);
+            GameObject.Destroy(rightLine);
+            leftLine = null;
+            rightLine = null;
+
+            linesCreated = false;
         }
 
         public void Initialize(Creature player)
